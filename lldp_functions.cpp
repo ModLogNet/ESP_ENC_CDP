@@ -21,31 +21,19 @@ unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[1500], int bufSize ) 
     unsigned int cdpDataIndex = 0;
 
     if (lldp_byte_array_contains(lldp_encbuff, cdpDataIndex, lldp_mac, sizeof(lldp_mac))) {
-      cdpDataIndex += sizeof(lldp_mac);
-      //CDP Packet found and is now getting processed
+      cdpDataIndex += sizeof(lldp_mac); // Increment index the length of the source MAC address
 
-
+      //LDDP Packet found and is now getting processed
       Serial.println("LLDP Packet Recieved");
 
       //Get source MAC Address
       byte* macFrom = lldp_encbuff + cdpDataIndex;
       info.MAC = lldp_print_mac(macFrom, 0, 6);
-      // Serial.println();
-      //////////////////////////////////
-      cdpDataIndex += sizeof(lldp_mac); // received from, MAC address = 6 bytes
+
+      cdpDataIndex += sizeof(lldp_mac); // Increment index the length of the MAC address
 
       unsigned int packet_length = (lldp_encbuff[cdpDataIndex] << 8) | lldp_encbuff[cdpDataIndex + 1];
       cdpDataIndex += 2;
-      //    if (packet_length != plen - cdpDataIndex) {
-
-      //       return (0);
-      //      }
-      //   if (!byte_array_contains(encbuff, cdpDataIndex, llc_bytes, sizeof(llc_bytes))) {
-
-      //     return (0);
-      //   }
-
-      //cdpDataIndex += sizeof(lldp_llc_bytes);
       return cdpDataIndex;
     }
     else {
@@ -89,6 +77,11 @@ PINFO lldp_packet_handler( byte cdpData[], size_t plen) {
     cdpDataIndex += 1;
 
     switch (lldpFieldType) {
+         //Chassis ID
+      case 0x0002:
+        info.ChassisID = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );
+        break;
+
       //Port Name
       case 0x0004:
         info.Port = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );

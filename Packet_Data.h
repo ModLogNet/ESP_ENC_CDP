@@ -5,6 +5,7 @@
 #define PACKET_DATA_H
 
 struct PINFO {
+  String ChassisID;
   String Proto;
   String ProtoVer;
   String Name;

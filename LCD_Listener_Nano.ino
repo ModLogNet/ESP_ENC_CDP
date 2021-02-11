@@ -13,8 +13,8 @@
 RTC_DATA_ATTR int bootCount = 0;
 
 
-LLDPINFO ScreenInfo;
-cdp_info ScreenInfo1;
+
+
 // ethernet interface mac address, must be unique on the LAN
 
 byte mymac[] = {  0x00, 0x01, 0x02, 0x03, 0x04, 0x05};

@@ -4,21 +4,6 @@
 #ifndef LLDP_FUNCTIONS_H
 #define LLDP_FUNCTIONS_H
 
-struct LLDPINFO {
-
-  String Name;
-  String MAC;
-  String Port;
-  String PortDesc;
-  String Model;
-  String VLAN;
-  String IP;
-  String VoiceVLAN;
-  String Cap;
-  String SWver;
-  String TTL;
-};
-
 unsigned int lldp_check_Packet(int plen, byte EthBuffer[1500], int bufSize );
 PINFO lldp_packet_handler( byte cdpData[],  size_t plen);
 String handleLLDPIPField(const byte a[], unsigned int offset, unsigned int lengtha);

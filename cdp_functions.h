@@ -5,24 +5,6 @@
 #ifndef CDP_FUNCTIONS_H
 #define CDP_FUNCTIONS_H
 
-struct cdp_info {
-
-
-  String Name;
-  String MAC;
-  String Port;
-  String PortDesc;
-  String Model;
-  String VLAN;
-  String IP;
-  String VoiceVLAN;
-  String Cap;
-  String SWver;
-  String TTL;
-
-};
-
-
 unsigned int cdp_check_Packet(int plen, byte EthBuffer[1500], int bufSize );
 PINFO cdp_packet_handler( byte cdpData[], size_t cdpDataIndex, size_t plen);
 String print_mac(const byte a[], unsigned int offset, unsigned int length);

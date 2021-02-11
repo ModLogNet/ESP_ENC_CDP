@@ -1,5 +1,5 @@
 # ESP_ENC_CDP
-This is a work in progress getting CDP to work with an ENC and ESP32
+This is a work in progress for capturing CDP packets with an enc28j60 on an ESP32
 
 This project is built using this library https://github.com/ModLogNet/ethercard_ESP
 

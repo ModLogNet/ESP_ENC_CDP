@@ -215,6 +215,7 @@ void displayinfo(PINFO Screens) {
   Serial.println("Protocol: " + Screens.Proto);
   Serial.println("Protocol Ver: " + Screens.ProtoVer);
   Serial.println("Name: " + Screens.Name);
+  Serial.println("Chassis ID: " + Screens.ChassisID);
   Serial.println("MAC: " + Screens.MAC);
   Serial.println("Port: " + Screens.Port);
   Serial.println("Model: " + Screens.Model);

@@ -77,7 +77,7 @@ PINFO lldp_packet_handler( byte cdpData[], size_t plen) {
     cdpDataIndex += 1;
 
     switch (lldpFieldType) {
-         //Chassis ID
+      //Chassis ID
       case 0x0002:
         info.ChassisID = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );
         break;
@@ -106,7 +106,6 @@ PINFO lldp_packet_handler( byte cdpData[], size_t plen) {
       //Model Name
       case 0x000c:
         info.Model = handlelldpAsciiField( cdpData, cdpDataIndex, lldpFieldLength);
-
         break;
 
       //Capabilities

@@ -29,5 +29,6 @@ String LldpCapabilities(String temp);
 String lldp_print_mac(const byte a[], unsigned int offset, unsigned int length);
 bool lldp_byte_array_contains(const byte a[], unsigned int offset, const byte b[], unsigned int length);
 String lldp_handleCdpNumField( const byte a[], unsigned int offset, unsigned int length);
-void lldp_getHEX(const byte a[], unsigned int offset, unsigned int length);
+
+String handleportsubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int lldpFieldLength);
 #endif

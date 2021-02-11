@@ -29,7 +29,7 @@ unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[1500], int bufSize ) 
 
       //Get source MAC Address
       byte* macFrom = lldp_encbuff + cdpDataIndex;
-      lldp_print_mac(macFrom, 0, 6);
+      info.MAC = lldp_print_mac(macFrom, 0, 6);
       // Serial.println();
       //////////////////////////////////
       cdpDataIndex += sizeof(lldp_mac); // received from, MAC address = 6 bytes
@@ -91,7 +91,8 @@ PINFO lldp_packet_handler( byte cdpData[], size_t plen) {
     switch (lldpFieldType) {
       //Port Name
       case 0x0004:
-        info.Port = handlelldpAsciiField( cdpData, cdpDataIndex + 1, lldpFieldLength - 1);
+        info.Port = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );
+
         break;
 
       //TTL
@@ -255,8 +256,7 @@ String lldp_print_mac(const byte a[], unsigned int offset, unsigned int length) 
     }
     Mac = Mac + String (a[i], HEX);
   }
-  info.MAC =  Mac;
-  // Serial.print(Mac);
+
   return Mac;
 }
 
@@ -271,23 +271,58 @@ String lldp_handleCdpNumField( const byte a[], unsigned int offset, unsigned int
   return temp;
 }
 
-void lldp_getHEX(const byte a[], unsigned int offset, unsigned int length) {
-  String Mac;
-  char temp [40];
+String handleportsubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int lldpFieldLength) {
+  lldpFieldLength = lldpFieldLength - 1;
+  unsigned int charTemp = cdpData[cdpDataIndex];
+  Serial.println("Port Sub type:" );
+  Serial.print(charTemp);
+  cdpDataIndex++;
 
-  for (unsigned int i = offset; i < offset + length; ++i) {
+  /*
+        https://docs.zephyrproject.org/latest/reference/kconfig/CONFIG_NET_LLDP_PORT_ID_SUBTYPE.html
+        Subtype 1 = Interface alias
+        Subtype 2 = Port component
+        Subtype 3 = MAC address
+        Subtype 4 = Network address
+        Subtype 5 = Interface name
+        Subtype 6 = Agent circuit ID
+        Subtype 7 = Locally assigned
+  */
+  switch (charTemp) {
 
-    if (i > offset) {
+    case 0x0001:
+      //ASCII
+      return handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
+      break;
 
-      Mac = Mac + ':';
-    }
-    if (a[i] < 0x10) {
-      Mac = Mac + '0';
+    case 0x0002:
+      //ASCII
+      return handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
+      break;
 
-    }
-    Mac = Mac + String (a[i], HEX);
+    case 0x0003:
+      //MAC Address
+      return lldp_print_mac(cdpData, cdpDataIndex, lldpFieldLength);
+      break;
+
+    case 0x0004:
+      //IP Address
+      return handleLLDPIPField(cdpData, cdpDataIndex, lldpFieldLength);
+      break;
+
+    case 0x0005:
+      //ASCII
+      return handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
+      break;
+
+    case 0x0006:
+      // ??
+      break;
+
+    case 0x0007:
+      //ASCII ??
+      return handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
+      break;
   }
-
-  Serial.print(Mac);
-
+  return " ";
 }

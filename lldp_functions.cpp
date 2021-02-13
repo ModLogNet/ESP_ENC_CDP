@@ -10,7 +10,7 @@ byte lldp_llc_bytes[] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x0c, 0x20, 0x00};
 byte lldp_encbuff[1500];
 
 
-unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[1500], int bufSize ) {
+unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[], int bufSize ) {
 
 
   if ( plen > 0 ) {
@@ -21,6 +21,7 @@ unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[1500], int bufSize ) 
     unsigned int cdpDataIndex = 0;
 
     if (lldp_byte_array_contains(lldp_encbuff, cdpDataIndex, lldp_mac, sizeof(lldp_mac))) {
+      
       cdpDataIndex += sizeof(lldp_mac); // Increment index the length of the source MAC address
 
       //LDDP Packet found and is now getting processed
@@ -53,13 +54,14 @@ bool lldp_byte_array_contains(const byte a[], unsigned int offset, const byte b[
   return true;
 }
 
-PINFO lldp_packet_handler( byte cdpData[], size_t plen) {
+PINFO lldp_packet_handler( byte cdpData[],uint16_t plen) {
+ 
+ Serial.println();
+  for (int i=0; i<plen; i++){
+    Serial.print(cdpData[i],HEX);
+  }
 
-  //if (byte_array_contains(cdpData, 0, lldp_mac, sizeof(lldp_mac))) {
-
-  //CDP Packet found and is now getting processed
-  //  Protocal = "LLDP";
-  //  Serial.println("LLPD Packet Recieved");
+  
   info.Proto = "LLDP";
   byte* macFrom = cdpData + sizeof(lldp_mac);
   lldp_print_mac(macFrom, 0, 6);
@@ -70,10 +72,6 @@ PINFO lldp_packet_handler( byte cdpData[], size_t plen) {
     unsigned int lldpFieldType = cdpData[cdpDataIndex];
     cdpDataIndex += 1;
     unsigned int lldpFieldLength = cdpData[cdpDataIndex];
-    /*   Serial.print(" type:");
-       Serial.print(lldpFieldType, HEX);
-       Serial.print(" Length:");
-       Serial.print(lldpFieldLength); */
     cdpDataIndex += 1;
 
     switch (lldpFieldType) {

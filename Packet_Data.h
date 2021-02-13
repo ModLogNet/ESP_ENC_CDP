@@ -20,7 +20,8 @@ struct PINFO {
   String SWver;
   String TTL;
   String VTP;
-String Dup;
+  String Dup;
+  String Checksum;
 };
 
 #endif

@@ -56,11 +56,11 @@ bool lldp_byte_array_contains(const byte a[], unsigned int offset, const byte b[
 
 PINFO lldp_packet_handler( byte cdpData[],uint16_t plen) {
  
- Serial.println();
+/* Serial.println();
   for (int i=0; i<plen; i++){
     Serial.print(cdpData[i],HEX);
   }
-
+*/
   
   info.Proto = "LLDP";
   byte* macFrom = cdpData + sizeof(lldp_mac);
@@ -264,8 +264,8 @@ String lldp_handleCdpNumField( const byte a[], unsigned int offset, unsigned int
 String handleportsubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int lldpFieldLength) {
   lldpFieldLength = lldpFieldLength - 1;
   unsigned int charTemp = cdpData[cdpDataIndex];
-  Serial.println("Port Sub type:" );
-  Serial.print(charTemp);
+ // Serial.println("Port Sub type:" );
+  //Serial.print(charTemp);
   cdpDataIndex++;
 
   /*

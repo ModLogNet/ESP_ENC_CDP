@@ -195,29 +195,30 @@ void loop()
     esp_deep_sleep_start();
   }
   int  plen = ether.packetReceive();
+ // Serial.println("plen size:");
+  //Serial.print(plen);
   byte buffcheck[1500];
-  memcpy( buffcheck, Ethernet::buffer, sizeof(Ethernet::buffer) );
+  memcpy( buffcheck, Ethernet::buffer, plen );
   // check if valid tcp data is received
 
   if (plen >= 0) {
     // unsigned char* data = (unsigned char *) Ethernet::buffer;
-    plen = sizeof(buffcheck);
-
-    unsigned int cdp_correct = cdp_check_Packet( plen, buffcheck,plen);
+    //plen = sizeof(buffcheck);
+   // Serial.println("plen size:" + plen);
+    unsigned int cdp_correct = cdp_check_Packet( plen, buffcheck, plen);
     if (cdp_correct > 1) {
-      displayinfo(cdp_packet_handler(buffcheck, sizeof (buffcheck)));
+      displayinfo(cdp_packet_handler(buffcheck, plen));
     }
 
     unsigned int lldp_Correct = lldp_check_Packet(plen,  buffcheck, plen);
     if (lldp_Correct > 1) {
-      displayinfo(lldp_packet_handler( buffcheck,  sizeof (buffcheck)));
+      displayinfo(lldp_packet_handler( buffcheck,  plen));
     }
 
   }
 
 }
 void displayinfo(PINFO Screens) {
-  Serial.println();
   Serial.println("Protocol: " + Screens.Proto);
   Serial.println("Protocol Ver: " + Screens.ProtoVer);
   Serial.println("Name: " + Screens.Name);

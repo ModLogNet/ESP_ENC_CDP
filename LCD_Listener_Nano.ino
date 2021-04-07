@@ -1,320 +1,382 @@
+
 #include "BluetoothSerial.h"
 #include <HardwareSerial.h>
-#include "Packet_data.h";
 #include <driver/rtc_io.h>
 #include "lldp_functions.h"
 #include "cdp_functions.h"
-//////////////////////////////////////////////////////////////////////////////
+#include "Packet_data.h"
+#include "images.h"
 #include <EtherCard.h>
-#include <Adafruit_ST7735.h>
+#include "DHCPOptions.h"
+#include "Button2.h"
 
+/////////////SCREEN////////////
+#include <TFT_eSPI.h>
+#include <SPI.h>
+#include "WiFi.h"
+#include <Wire.h>
+#include "Free_Fonts.h"
+int tft_width = 135;
+int tft_height = 240;
+TFT_eSPI tft = TFT_eSPI(tft_width, tft_height); // Invoke custom library
 
-//Push Button to GPIO 33 pulled down with a 10K Ohm resistor
-RTC_DATA_ATTR int bootCount = 0;
+#define ADC_PIN             34
+#define BUTTON_1            35
+#define BUTTON_2            0
 
+Button2 btn1(BUTTON_1);
+Button2 btn2(BUTTON_2);
+int btnCick = false;
 
+DHCP_DATA DHCP_Info[256];
+int OptionCount = 0;
 
-
-// ethernet interface mac address, must be unique on the LAN
-
-byte mymac[] = {  0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
+byte mymac[] = {  0xCA, 0xFE, 0xC0, 0xFF, 0xEE, 0x00};
 byte Ethernet::buffer[1500];
+bool ENCLink;
 String Protocal;
-int CrntItem = 0;
+bool LogicLink = false;
+bool justbooted = true;
+#define Serialout
+int BatLvl = 0;
 
-int Changed = 0;
-
-
-#include <Adafruit_GFX.h>    // Core graphics librar
-#include <Adafruit_ST7735.h> // Hardware-specific library
-//#include <SPI.h>
-
-//Use these pins for the shield!
-//#define sclk 13
-//#define mosi 11
-//#define cs   4
-//#define dc   8
-//#define rst  9  // you can also connect this to the Arduino reset
-
-// Option 1: use any pins but a little slower
-//Adafruit_ST7735 tft = Adafruit_ST7735(cs, dc, rst);
-
-//Print &out = tft;
-
-
+DHCP_DATA DHCP_info[255];
 
 /////////////////////////////////////////////////////////////////
-// Dual CPU stuff                                              //
+// Setup other core to handle Bluetooth Serial port            //
 /////////////////////////////////////////////////////////////////
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#endif
+
+int queueSize = 1;
+int queue_delay = 2;
+QueueHandle_t bluetooth_stat;
+
 static int taskCore = 0;
+BluetoothSerial SerialBT;
+HardwareSerial MySerial(2);
+
+
+
+#include "soc/rtc_wdt.h"
+#include "esp_int_wdt.h"
+#include "esp_task_wdt.h"
 
 void coreTask( void * pvParameters ) {
+  rtc_wdt_protect_off();
+  rtc_wdt_disable();
+  disableCore0WDT();
+  disableLoopWDT();
+  esp_task_wdt_delete(NULL);
   //Bluetooth COMs are running on core 1
-  BluetoothSerial SerialBT;
-  HardwareSerial MySerial(2);
-  MySerial.begin(9600, SERIAL_8N1, 16, 17);
-  SerialBT.begin("FarCough");
+  int BT = 0;
 
+  MySerial.begin(9600, SERIAL_8N1, 32, 39);
+  SerialBT.begin("FarCough");
+  char *pin = "1234";
+  //SerialBT.register_callback(bt_callback);
+  SerialBT.setPin(pin);
+  BT = 1;
+
+  xQueueSend(bluetooth_stat, &BT, queue_delay);
   while (true) {
-    //MySerial.println (".");
+
+    BT = 1;
     if (MySerial.available()) {
+      BT = 2;
       SerialBT.write(MySerial.read());
     }
     if (SerialBT.available()) {
+      BT = 2;
       MySerial.write(SerialBT.read());
     }
-    delay(10);
   }
-}
-
-int WokeUP;
-int pushBtn = 32;
-
-//volatile int interruptCounter;
-hw_timer_t * timer = NULL;
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-portMUX_TYPE buttonMux = portMUX_INITIALIZER_UNLOCKED;
-volatile boolean KillEth = false;
-
-
-void IRAM_ATTR isr_handle() {
-  portENTER_CRITICAL(&buttonMux);
-  Serial.println("Sleeping....");
-  KillEth = true;
-  timerAlarmEnable(timer);
-  portEXIT_CRITICAL(&buttonMux);
-
-}
-
-void IRAM_ATTR onTimer() {
-  portENTER_CRITICAL_ISR(&timerMux);
-  ENC28J60::powerDown();
-  Serial.println("Turning OFF");
-  digitalWrite(4, LOW);
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_32, 1); //1 = High, 0 = Low
-  esp_deep_sleep_start();
-  portEXIT_CRITICAL_ISR(&timerMux);
 }
 
 void setup()
 {
-  timer = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 6000000, true);
 
-  attachInterrupt(pushBtn, isr_handle, HIGH);
+  bluetooth_stat = xQueueCreate( queueSize, sizeof( int ) );
+
+  tft.init();
+  tft.setRotation(0);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(0, 22, 1);
+
+ button_init();
+
+  if (bluetooth_stat == NULL) {
+    Serial.println("Error creating the queue");
+  }
+  int BT = 0;
+  xQueueSend(bluetooth_stat, &BT, 2);
+
+  tft.println("Serial 9600");
+
   Serial.begin(9600);
-  pinMode (4, OUTPUT);
-  digitalWrite(4, HIGH);
-  pinMode ( pushBtn, INPUT );
-  print_wakeup_reason();
 
-  pinMode (4, OUTPUT);
-  digitalWrite(4, HIGH);
-
-  //  //tft.fillScreen(ST7735_BLACK);
-  // pinMode(13, OUTPUT);
   delay(1000);
-  ++bootCount;
-  Serial.println("Boot number: " + String(bootCount));
 
+  tft.print("Starting to create task on core ");
+  tft.println(taskCore);
+  tft.print("Current Core:");
+  tft.println(xPortGetCoreID());
 
+  xTaskCreatePinnedToCore(  coreTask, "coreTask",     10000, NULL, 1 , NULL,  0);
 
-  //////////////////////////////////////////////////////////////////////////
-  Serial.print("Starting to create task on core ");
-  Serial.println(taskCore);
-  Serial.print("Current Core:");
-  Serial.println(xPortGetCoreID());
-  xTaskCreatePinnedToCore(
-    coreTask,   /* Function to implement the task */
-    "coreTask", /* Name of the task */
-    10000,      /* Stack size in words */
-    NULL,       /* Task input parameter */
-    0,          /* Priority of the task */
-    NULL,       /* Task handle. */
-    taskCore);  /* Core where the task should run */
-
-  Serial.println("Task created...");
-  ////////////////////////////////////////////////////////////////////////
-
-
-  Serial.println("Serial Initialised\nScreen Initialising");
-  ////tft.initR(INITR_BLACKTAB);   // initialize a ST7735S chip, black tab
-  Serial.println("Screen Done");
-
-  ////tft.fillScreen(ST7735_BLACK);
-
-  ////tft.setTextWrap(false);
-  ////tft.setRotation(1);
-  ////tft.setCursor(0, 0);
-  //testdrawtext("Default Interval is 60secs!\n", ST7735_RED);
-  // testdrawtext("DHCP:", ST7735_BLUE);
-
-  ether.begin(sizeof (Ethernet::buffer), mymac, 5);
-  Serial.println("Ethernet Done");
-  if (!ether.dhcpSetup())
-  {
-    //   testdrawtext("DHCP failed.\n", ST7735_RED);
-    Serial.println("DHCP failed.");
+  tft.println("Initializing Ethernet.");
+  if (ether.begin(sizeof (Ethernet::buffer), mymac, 5) == 0) {
+    tft.print("Failed to access Ethernet controller");
   }
-  else
-  {
+  else {
+    tft.println("Ethernet Done");
 
-    // testdrawtext("DHCP IP:", ST7735_GREEN);
-    Serial.print("DHCP IP:");
-    for (unsigned int j = 0; j < 4; ++j) {
-      Serial.print(String(ether.myip[j]));
-      // testdrawtext(String(ether.myip[j]), ST7735_WHITE);
-      if (j < 3) {
-        Serial.print(".");
-        //  testdrawtext(".", ST7735_WHITE);
-      }
-    }
-    testdrawtext("\n", ST7735_WHITE);
-    Serial.print("\n");
+    ether.dhcpAddOptionCallback( 15, DHCPOption);
+
   }
-  delay(1000);
+
   ENC28J60::enablePromiscuous();
-  Serial.println("Ethernet Promiscuous");
 
+  tft.println("Ethernet Promiscuous");
+  tft.setSwapBytes(true);
+  title();
 
-
-
-
+  // pinMode(33, INPUT);
 }
+
 void loop()
 {
-  if (KillEth == true) {
-    Serial.println("Powering Down ETH");
+  showVoltage();
+  LinkStatus();
 
-    delay(5000);
-    ENC28J60::powerDown();
-    Serial.println("Turning OFF");
-    digitalWrite(4, LOW);
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_32, 1); //1 = High, 0 = Low
-    esp_deep_sleep_start();
+   if (btnCick) {
+        showVoltage();
+    }
+    button_loop();
+    
+  int BT_STAT = 0;
+  //Serial.print(BT_STAT);
+
+
+  xQueueReceive(bluetooth_stat, &BT_STAT, queue_delay);
+  if (BT_STAT == 1) {
+    tft.pushImage(tft_width - 65, 0, 12, 21, image_BT_OFF);
   }
+
+  if (BT_STAT == 2) {
+    tft.pushImage(tft_width - 65, 0, 12, 21, image_BT);
+  }
+
+  //  Serial.print(BT_STAT);
+
   int  plen = ether.packetReceive();
   byte buffcheck[1500];
-  memcpy( buffcheck, Ethernet::buffer, sizeof(Ethernet::buffer) );
-  // check if valid tcp data is received
+  memcpy( buffcheck, Ethernet::buffer, plen );
 
   if (plen >= 0) {
-    // unsigned char* data = (unsigned char *) Ethernet::buffer;
-    plen = sizeof(buffcheck);
-
-    unsigned int cdp_correct = cdp_check_Packet( plen, buffcheck,plen);
+    unsigned int cdp_correct = cdp_check_Packet( plen, buffcheck, plen);
     if (cdp_correct > 1) {
-      displayinfo(cdp_packet_handler(buffcheck, sizeof (buffcheck)));
-    }
+      displayinfo(cdp_packet_handler(buffcheck, plen));
 
+    }
     unsigned int lldp_Correct = lldp_check_Packet(plen,  buffcheck, plen);
     if (lldp_Correct > 1) {
-      displayinfo(lldp_packet_handler( buffcheck,  sizeof (buffcheck)));
+      displayinfo(lldp_packet_handler( buffcheck,  plen));
     }
+  }
+}
 
+void displayinfo(PINFO Screens) {
+  tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
+  tft.setCursor(0, 22, 1);
+  tft.setTextColor(TFT_WHITE);
+
+  drawtext(Screens.Proto);
+  drawtext(Screens.ProtoVer);
+  drawtext(Screens.Name);
+  drawtext(Screens.ChassisID);
+  drawtext(Screens.MAC);
+  drawtext(Screens.Port);
+  drawtext(Screens.Model);
+  drawtext(Screens.VLAN);
+  drawtext(Screens.IP);
+  drawtext(Screens.VoiceVLAN);
+  drawtext(Screens.Cap);
+  drawtext(Screens.SWver);
+  drawtext(Screens.PortDesc);
+  drawtext(Screens.Dup);
+  drawtext(Screens.VTP);
+  drawtext(Screens.TTL);
+}
+
+void drawtext(String value[2]) {
+  if (value[1] != "EMPTY") {
+    tft.setTextColor(TFT_GREEN);
+    tft.print(value[0] + ": ");
+    tft.setTextColor(TFT_WHITE);
+    tft.print(value[1] + '\n');
+  }
+}
+
+void title() {
+  if (tft_width >= 240) {
+    tft.fillRect(0, 0, tft_width, 21, TFT_WHITE );
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.drawString("MODLOG CDP/LLDP", 5, 1, 2);
+  }
+  else {
+    tft.fillRect(0, 0, tft_width, 21, TFT_WHITE );
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.drawString("MODLOG", 5, 1, 2);
   }
 
 }
-void displayinfo(PINFO Screens) {
-  Serial.println();
-  Serial.println("Protocol: " + Screens.Proto);
-  Serial.println("Protocol Ver: " + Screens.ProtoVer);
-  Serial.println("Name: " + Screens.Name);
-  Serial.println("Chassis ID: " + Screens.ChassisID);
-  Serial.println("MAC: " + Screens.MAC);
-  Serial.println("Port: " + Screens.Port);
-  Serial.println("Model: " + Screens.Model);
-  Serial.println("VLAN: " + Screens.VLAN);
-  Serial.println("IP: " + Screens.IP);
-  Serial.println("VoiceVLAN: " + Screens.VoiceVLAN);
-  Serial.println("Cap: " + Screens.Cap);
-  Serial.println("SWver: " + Screens.SWver);
-  Serial.println("Port Desc: " + Screens.PortDesc);
-  Serial.println("Duplex: " + Screens.Dup);
-  Serial.println("VTP: " + Screens.VTP);
-  Serial.println("TTL: " + Screens.TTL);
-  Serial.println("------[END]--------");
+
+void showVoltage()
+{
+  int vref = 1100;
+
+  int batteryLevel = map(analogRead(34), 0.0f, 4095.0f, 0, 100);
+  if (BatLvl != batteryLevel) {
+    BatLvl = batteryLevel;
+    tft.pushImage(tft_width - 33, 2, 32, 18, image_data_bat1);
+    tft.setTextColor(TFT_BLACK);
+
+    uint16_t v = analogRead(ADC_PIN);
+    float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
+
+    int batteryLevel = map(battery_voltage, 0.0f, 4.0f, 0, 100);
+    // int batteryLevel = map(analogRead(34), 0.0f, 4095.0f, 0, 100);
+    if (battery_voltage > 4.5) {
+      tft.drawString("---", tft_width - 28, 7);
+    }
+    else {
+      tft.drawString(String(battery_voltage), tft_width - 28, 7);
+    }
+
+
+    // tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
+    // tft.setCursor(0, 22, 1);
+    // tft.setTextColor(TFT_WHITE);
+    // tft.println("Voltage :" + String(battery_voltage) + "V");
+
+  }
 }
 
+void LinkStatus()
+{
+  bool LinkStat = ENC28J60::isLinkUp();
+  //Serial.print(String(LinkStat));
+  if (ENCLink != LinkStat || justbooted == true) {
+    justbooted = false;
+    ENCLink = LinkStat;
+    if (LinkStat == true ) {
+      tft.setTextColor(TFT_BLACK);
+      tft.pushImage(tft_width - 50, 0, 16, 21, image_up);
+      DHCP();
 
+    }
+    if (LinkStat == false ) {
 
+      tft.setTextColor(TFT_BLACK);
+      tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
+      tft.pushImage(tft_width - 50, 0, 16, 21, image_down);
 
-void set_mac(const byte a[], unsigned int offset, unsigned int length) {
-  // unsigned int n = 0;
-  // for (unsigned int i = offset; i < offset + length; ++i) {
-  // if (i > offset && i % 2 == 0) value_mac_buffer[n++] = ':';
-
-  //  value_mac_buffer[n++] = val2hex(a[i] >> 4);
-  //  value_mac_buffer[n++] = val2hex(a[i] & 0xf);
-  //  }
-
-  //  value_mac_buffer[n++] = '\0';
-  //set_menu(LABEL_MAC, value_mac_buffer);
+    }
+  }
 }
 
+void DHCP() {
 
-void drawvalues(char *text, uint16_t color) {
-  //tft.setTextColor(color);
-  //tft.setTextWrap(true);
-  //tft.setRotation(1);
-}
+  // Reset Array to defaults.
+  OptionCount = 0;
+  for ( int j = 0; j < 255; ++j) {
+    DHCP_info[j].Option[0] = "EMPTY";
+    DHCP_info[j].Option[1] = "EMPTY";
+  }
 
-void testdrawtext(String text, uint16_t color) {
-  //tft.setTextColor(color);
-  //tft.print(text);
-}
+  tft.fillRect(0, 21, tft_width, tft_height, TFT_BLACK );
+  tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
+  tft.setTextColor( TFT_BLACK);
+  tft.setCursor(5, tft_height - 9, 1);
+  tft.println("Getting DHCP...");
 
-void drawscreen () {
-  //tft.fillScreen(ST7735_BLACK);
-  //tft.setTextWrap(false);
-  //tft.setRotation(1);
-  //tft.setCursor(0, 0);
-  testdrawtext("Default Interval is 60secs!\n", ST7735_RED);
-  if (String(ether.myip[1]) == "") {
-    testdrawtext("DHCP failed.\n", ST7735_RED);
-    Serial.println("DHCP failed.");
+  if (!ether.dhcpSetup())
+  {
+    tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
+    tft.setTextColor( TFT_RED);
+    tft.setCursor(5, tft_height - 9, 1);
+    tft.println("DHCP FAILED!");
   }
   else
   {
-    String DHCPtxt = "";
-    testdrawtext("DHCP IP:", ST7735_GREEN);
+    String ipaddy;
     for (unsigned int j = 0; j < 4; ++j) {
-      DHCPtxt = DHCPtxt + (String(ether.myip[j]));
-      testdrawtext(String(ether.myip[j]), ST7735_WHITE);
+      ipaddy  += String(ether.myip[j]);
       if (j < 3) {
-        DHCPtxt = DHCPtxt + ".";
-        testdrawtext(".", ST7735_WHITE);
+        ipaddy += ".";
       }
     }
-    testdrawtext("\n", ST7735_WHITE);
-    Serial.println("DHCP IP:" + DHCPtxt);
-    testdrawtext("Protocal:", ST7735_GREEN);
-    testdrawtext(Protocal, ST7735_WHITE);
-    testdrawtext("\n", ST7735_WHITE);
-  }
+    tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
+    tft.setTextColor( TFT_BLACK);
+    tft.setCursor(5, tft_height - 9, 1);
+    tft.println("IP:" + ipaddy);
 
-  for (unsigned int i = 0; i < 8; ++i) {
-    //tft.setCursor(0, i * 10 + 28);
-    //    testdrawtext(Names[i], ST7735_GREEN);
-    //    testdrawtext(LCD_data[i] + "\n", ST7735_WHITE);
-    //   Serial.println("" + Names[i] + "" + LCD_data[i]);
-    //    LCD_data[i] = "";
-  }
+    tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
+    tft.setCursor(0, 22, 1);
+    tft.setTextColor(TFT_WHITE);
 
-  Serial.println("--------END-------");
-  delay(1000);
+    for (unsigned int j = 0; j < 254; ++j) {
+      drawtext(DHCP_info[j].Option);
+    }
+  }
 }
 
-void print_wakeup_reason() {
-  esp_sleep_wakeup_cause_t wakeup_reason;
-  wakeup_reason = esp_sleep_get_wakeup_cause();
-  switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); ether.begin(sizeof (Ethernet::buffer), mymac, 5); ether.dhcpSetup(); break;
-    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
-    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
-    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason); break;
-  }
+
+
+void button_init()
+{
+    btn1.setLongClickHandler([](Button2 & b) {
+        btnCick = false;
+        int r = digitalRead(TFT_BL);
+        tft.fillScreen(TFT_BLACK);
+        tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        tft.setTextDatum(MC_DATUM);
+        tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
+        espDelay(6000);
+        digitalWrite(TFT_BL, !r);
+
+        tft.writecommand(TFT_DISPOFF);
+        tft.writecommand(TFT_SLPIN);
+        //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+        // esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
+        delay(200);
+        esp_deep_sleep_start();
+    });
+    btn1.setPressedHandler([](Button2 & b) {
+        Serial.println("Detect Voltage..");
+        btnCick = true;
+    });
+
+    btn2.setPressedHandler([](Button2 & b) {
+        btnCick = false;
+        Serial.println("btn press wifi scan");
+        DHCP();
+    });
+}
+
+void button_loop()
+{
+    btn1.loop();
+    btn2.loop();
+}
+void espDelay(int ms)
+{
+    esp_sleep_enable_timer_wakeup(ms * 1000);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    esp_light_sleep_start();
 }

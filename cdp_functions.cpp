@@ -4,160 +4,157 @@
 byte cdp_mac[] = {0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xcc};
 byte llc_bytes[] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x0c, 0x20, 0x00};
 #define printhex(n) {if((n)<0x10){Serial.print('0');}Serial.print((n),HEX);}
+
 PINFO cdpinfo;
 
-byte encbuff[1500];
+//byte encbuff[1500];
 
 unsigned int cdp_check_Packet(int plen, byte EthBuffer[], int bufSize  ) {
-
   if ( plen > 0 ) {
     if (plen > sizeof(EthBuffer)) {
-
       plen = sizeof(EthBuffer);
     }
     unsigned int cdpDataIndex = 0;
-    if (byte_array_contains(EthBuffer, cdpDataIndex, cdp_mac, sizeof(cdp_mac))) {
 
-      cdpDataIndex += sizeof(cdp_mac);// Increment index the length of the source MAC address
-
-      //CDP Packet found and is now getting processed
-      Serial.println("CDP Packet Recieved");
-
-      //Get source MAC Address
-      byte* macFrom = EthBuffer + cdpDataIndex;
-      cdpinfo.MAC = print_mac(macFrom, 0, 6);
-
-      cdpDataIndex += sizeof(cdp_mac); // received from, MAC address = 6 bytes
-
-
-      unsigned int packet_length = (EthBuffer[cdpDataIndex] << 8) | EthBuffer[cdpDataIndex + 1];
-      cdpDataIndex += 2;
-      return cdpDataIndex;
+   // This PID is for CDP only and will filter out VTP, DTP, etc..
+    String PID = print_mac(EthBuffer, 20, 2);
+    if (PID != "20:00") {
+      return (0);
     }
     else {
-      return (0);
+      if (byte_array_contains(EthBuffer, cdpDataIndex, cdp_mac, sizeof(cdp_mac))) {
+
+        cdpDataIndex += sizeof(cdp_mac);// Increment index the length of the source MAC address
+
+        //CDP Packet found and is now getting processed
+        Serial.println("CDP Packet Recieved");
+
+        //Get source MAC Address
+        byte* macFrom = EthBuffer + cdpDataIndex;
+        cdpinfo.MAC[1] = print_mac(macFrom, 0, 6);
+
+        cdpDataIndex += sizeof(cdp_mac); // received from, MAC address = 6 bytes
+
+        unsigned int packet_length = (EthBuffer[cdpDataIndex] << 8) | EthBuffer[cdpDataIndex + 1];
+
+
+        cdpDataIndex += 2;
+        return cdpDataIndex;
+      }
+      else {
+        return (0);
+      }
     }
   }
 }
 
 PINFO cdp_packet_handler( byte cdpData[],  size_t plen) {
 
-  Serial.println();
-  for (int i = 0; i < plen; i++) {
-    if (cdpData[i] < 0x10) {
-      Serial.print('0');
+  /* Display Packet HEX
+    Serial.println();
+    for (int i = 0; i < plen; i++) {
+      if (cdpData[i] < 0x10) {
+        Serial.print('0');
 
+      }
+      Serial.print(cdpData[i], HEX);
+      Serial.print(" ");
     }
-    Serial.print(cdpData[i], HEX);
-    Serial.print(" ");
-  }
+  */
 
-  Serial.println();
   unsigned int cdpDataIndex = 22;
   int cdpVersion = cdpData[cdpDataIndex];
-  if (cdpVersion != 0x02) {
-    Serial.print("Version: ");
-    Serial.println(cdpVersion);
-  }
+
+  Serial.print("Version: ");
+  Serial.println(cdpVersion);
+
   cdpDataIndex++;
 
   int cdpTtl = cdpData[cdpDataIndex];
-  Serial.print("TTL: ");
-  Serial.println(cdpTtl);
-  cdpinfo.Proto = "CDP";
+
+  cdpinfo.TTL[1] = cdpTtl;
+  cdpinfo.Proto[1] = "CDP";
 
   cdpDataIndex++;
 
   unsigned int cdpChecksum = (cdpData[cdpDataIndex] << 8) | cdpData[cdpDataIndex + 1];
   cdpDataIndex += 2;
-  Serial.print(F("Checksum: "));
-  printhex(cdpChecksum >> 8);
-  printhex(cdpChecksum & 0xFF);
-  Serial.println(cdpDataIndex);
+  //Serial.print(F("Checksum: "));
+  //printhex(cdpChecksum >> 8);
+  //printhex(cdpChecksum & 0xFF);
+  //Serial.println(cdpDataIndex);
 
 
-
-  while (cdpDataIndex < plen) {
+  uint16_t startcdp = millis();
+  bool StopCDP = false;
+  while (cdpDataIndex < plen && uint16_t(millis()) - startcdp < 5000 && StopCDP == false) {
     unsigned int cdpFieldType = (cdpData[cdpDataIndex] << 8) | cdpData[cdpDataIndex + 1];
     cdpDataIndex += 2;
     unsigned int cdpFieldLength = (cdpData[cdpDataIndex] << 8) | cdpData[cdpDataIndex + 1];
     cdpDataIndex += 2;
     cdpFieldLength -= 4;
-    if (cdpFieldType!=0){Serial.println(cdpFieldType, HEX);}
+
     switch (cdpFieldType) {
 
-      //Get the device name
+      //device name
       case 0x0001:
-        Serial.println("name - index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        //cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
-        cdpinfo.Name = handleCdpAsciiField(cdpData, cdpDataIndex, cdpFieldLength);
-
+        cdpinfo.Name[1] = handleCdpAsciiField(cdpData, cdpDataIndex, cdpFieldLength);
         break;
 
       //IP address
       case 0x0002:
-        //Serial.println("IP- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
-        handleCdpAddresses(cdpData, cdpDataIndex, cdpFieldLength );
 
+        cdpinfo.IP[1] = handleCdpAddresses(cdpData, cdpDataIndex, cdpFieldLength );
+        if (cdpinfo.IP[1] == "CORRUPT_IP") {
+          StopCDP = true;
+        }
         break;
 
       //Port Name
       case 0x0003:
-        //Serial.println("portname- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
-        cdpinfo.Port = handleCdpAsciiField(cdpData, cdpDataIndex, cdpFieldLength);
+        cdpinfo.Port[1] = handleCdpAsciiField(cdpData, cdpDataIndex, cdpFieldLength);
 
         break;
 
       case 0x0004:
-        Serial.println("capabilities- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        //  cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
-        cdpinfo.Cap = handleCdpCapabilities(cdpData, cdpDataIndex + 2, cdpFieldLength - 2);
+        cdpinfo.Cap[1] = handleCdpCapabilities(cdpData, cdpDataIndex + 2, cdpFieldLength - 2);
         break;
 
       case 0x0005:
-        Serial.println("swver- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        // cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
-        // if (cdpFieldLength > 50) {    cdpFieldLength = 50;}
-        cdpinfo.SWver = handleCdpAsciiField( encbuff, cdpDataIndex, cdpFieldLength);
+        // Skip cdpinfo.SWver[1] = handleCdpAsciiField( cdpData, cdpDataIndex, cdpFieldLength);
 
         break;
 
       //CDP Model Name
       case 0x0006:
-        Serial.println("model- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        cdpinfo.Model = handleCdpAsciiField(cdpData, cdpDataIndex, cdpFieldLength);
-
+        cdpinfo.Model[1] = handleCdpAsciiField(cdpData, cdpDataIndex, cdpFieldLength);
         break;
 
+      //Hello Protocol
+      // case 0x0008:
+      //Serial.println("vtp- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
+      //  break;
+
       case 0x0009:
-        Serial.println("vtp- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        //  cdpinfo.VTP = handleCdpAsciiField( encbuff, cdpDataIndex, cdpFieldLength);
+        cdpinfo.VTP[1] = handleCdpAsciiField( cdpData, cdpDataIndex, cdpFieldLength);
         break;
 
       //CDP VLAN #
       case 0x000a:
-        Serial.println("VLAN- index: "); Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        // cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
-        cdpinfo.VLAN = handleCdpNumField(cdpData, cdpDataIndex, cdpFieldLength);
+        cdpinfo.VLAN[1] = handleCdpNumField(cdpData, cdpDataIndex, cdpFieldLength);
         break;
 
       case 0x000b:
-        Serial.println("capabilities - index: ") ; Serial.print(cdpDataIndex); Serial.print(" len: "); Serial.print(cdpFieldLength);
-        //   cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
-        cdpinfo.Dup = handleCdpDuplex(cdpData, cdpDataIndex, cdpFieldLength);
+        cdpinfo.Dup[1] = handleCdpDuplex(cdpData, cdpDataIndex, cdpFieldLength);
         break;
 
 
       //CDP VLAN voice#
       case 0x000e:
-        Serial.println("voiceVLAN");
-        //    cdp_getHEX(cdpData, cdpDataIndex, cdpFieldLength) ;
         handleCdpVoiceVLAN(cdpData, cdpDataIndex + 2, cdpFieldLength - 2);
         break;
     }
-    if (cdpFieldLength==0){ return cdpinfo;}
+
     cdpDataIndex += cdpFieldLength;
   }
 
@@ -261,62 +258,65 @@ String handleCdpNumField( const byte a[], unsigned int offset, unsigned int leng
     num <<= 8;
     num += a[offset + i];
   }
-  temp = "" + String(num, DEC);
+  temp =  String(num, DEC);
   return temp;
 }
 
-void handleCdpVoiceVLAN( const byte a[], unsigned int offset, unsigned int length) {
+String handleCdpVoiceVLAN( const byte a[], unsigned int offset, unsigned int length) {
   unsigned long num = 0;
   for (unsigned int i = offset; i < ( offset + length ); ++i) {
     num <<= 8;
     // Serial.print(a[i]);
     num += a[i];
   }
-  cdpinfo.VoiceVLAN = String(num, DEC);
+  return  String(num, DEC);
 }
 
 
 
-boolean handleCdpAddresses(const byte a[], unsigned int offset, unsigned int lengtha) {
-
-
+String handleCdpAddresses(const byte a[], unsigned int offset, unsigned int lengtha) {
+  String temp;
   unsigned long numOfAddrs = (a[offset] << 24) | (a[offset + 1] << 16) | (a[offset + 2] << 8) | a[offset + 3];
   offset += 4;
-  Serial.print("number of addresses: " );
-  Serial.print(numOfAddrs);
-  for (unsigned long i = 0; i < numOfAddrs; ++i) {
-    unsigned int protoType = a[offset++];
-    unsigned int protoLength = a[offset++];
-    byte proto[8];
-    for (unsigned int j = 0; j < protoLength; ++j) {
-      proto[j] = a[offset++];
-    }
-    unsigned int addressLength = (a[offset] << 8) | a[offset + 1];
+  //Serial.print("number of addresses: " );
+  //Serial.print(numOfAddrs);
 
-    offset += 2;
-    byte address[4];
-    if (addressLength != 4) {
-      Serial.print(F(" Corrupt Packet Received: "));
-      Serial.print (addressLength);
-      return (0);
+  if (numOfAddrs < 5) {
+    for (unsigned long i = 0; i < numOfAddrs; ++i) {
+      unsigned int protoType = a[offset++];
+      unsigned int protoLength = a[offset++];
+      byte proto[8];
+      for (unsigned int j = 0; j < protoLength; ++j) {
+        proto[j] = a[offset++];
+      }
+      unsigned int addressLength = (a[offset] << 8) | a[offset + 1];
+      offset += 2;
+      byte address[4];
+      if (addressLength != 4) {
+        //Serial.print(F(" Corrupt Packet Received: "));
+        //Serial.print (addressLength);
+        return ("");
 
-    }
-    //if (addressLength != 4)     break;
-    cdpinfo.IP = "";
-    for (unsigned int j = 0; j < addressLength; ++j) {
-      address[j] = a[offset++];
+      }
+      else {
+        cdpinfo.IP[1] = "";
+        for (unsigned int j = 0; j < addressLength; ++j) {
+          address[j] = a[offset++];
 
-      cdpinfo.IP = cdpinfo.IP + address[j] ;
-      if (j < 3) {
-        cdpinfo.IP = cdpinfo.IP + ".";
+          temp += address[j] ;
+          if (j < 3) {
+            temp += ".";
+          }
+        }
       }
 
-
-
     }
-    if (addressLength != 4)     break;
-  }
 
+    return temp;
+  }
+  else {
+    return "CORRUPT_IP";
+  }
 }
 
 
@@ -393,13 +393,13 @@ char val2dec(byte b) {
   }
 }
 
-void cdp_getHEX(const byte a[], unsigned int offset, unsigned int length) {
+String cdp_getHEX(const byte a[], unsigned int offset, unsigned int length) {
   String Mac;
   for (unsigned int i = offset; i < offset + length; ++i) {
 
     if (i > offset) {
 
-      Mac += ' ';
+      // Mac += ' '; //Uncomment to add a space for easier formatting
     }
     if (a[i] < 0x10) {
       Mac = + '0';
@@ -409,5 +409,6 @@ void cdp_getHEX(const byte a[], unsigned int offset, unsigned int length) {
   }
 
   Serial.print(Mac);
+  return Mac;
 
 }

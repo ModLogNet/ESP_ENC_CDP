@@ -21,7 +21,7 @@ unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[], int bufSize ) {
     unsigned int cdpDataIndex = 0;
 
     if (lldp_byte_array_contains(lldp_encbuff, cdpDataIndex, lldp_mac, sizeof(lldp_mac))) {
-      
+
       cdpDataIndex += sizeof(lldp_mac); // Increment index the length of the source MAC address
 
       //LDDP Packet found and is now getting processed
@@ -29,7 +29,7 @@ unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[], int bufSize ) {
 
       //Get source MAC Address
       byte* macFrom = lldp_encbuff + cdpDataIndex;
-      info.MAC = lldp_print_mac(macFrom, 0, 6);
+      info.MAC[1] = lldp_print_mac(macFrom, 0, 6);
 
       cdpDataIndex += sizeof(lldp_mac); // Increment index the length of the MAC address
 
@@ -54,15 +54,15 @@ bool lldp_byte_array_contains(const byte a[], unsigned int offset, const byte b[
   return true;
 }
 
-PINFO lldp_packet_handler( byte cdpData[],uint16_t plen) {
- 
- Serial.println();
-  for (int i=0; i<plen; i++){
-    Serial.print(cdpData[i],HEX);
-  }
+PINFO lldp_packet_handler( byte cdpData[], uint16_t plen) {
 
-  
-  info.Proto = "LLDP";
+  /* Serial.println();
+    for (int i=0; i<plen; i++){
+      Serial.print(cdpData[i],HEX);
+    }
+  */
+
+  info.Proto[1] = "LLDP";
   byte* macFrom = cdpData + sizeof(lldp_mac);
   lldp_print_mac(macFrom, 0, 6);
 
@@ -77,33 +77,33 @@ PINFO lldp_packet_handler( byte cdpData[],uint16_t plen) {
     switch (lldpFieldType) {
       //Chassis ID
       case 0x0002:
-        info.ChassisID = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );
+        info.ChassisID[1] = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );
         break;
 
       //Port Name
       case 0x0004:
-        info.Port = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );
+        info.Port[1] = handleportsubtype( cdpData, cdpDataIndex , lldpFieldLength );
 
         break;
 
       //TTL
       case 0x0006:
-        info.TTL = lldp_handleCdpNumField(cdpData, cdpDataIndex , lldpFieldLength);
+        info.TTL[1] = lldp_handleCdpNumField(cdpData, cdpDataIndex , lldpFieldLength);
         break;
 
       //Port Description
       case 0x0008:
-        info.PortDesc = handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
+        info.PortDesc[1] = handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
         break;
 
       //Device Name
       case 0x000a:
-        info.Name = handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
+        info.Name[1] = handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
         break;
 
       //Model Name
       case 0x000c:
-        info.Model = handlelldpAsciiField( cdpData, cdpDataIndex, lldpFieldLength);
+        info.Model[1] = handlelldpAsciiField( cdpData, cdpDataIndex, lldpFieldLength);
         break;
 
       //Capabilities
@@ -113,7 +113,7 @@ PINFO lldp_packet_handler( byte cdpData[],uint16_t plen) {
 
       //Management IP Address
       case 0x0010:
-        info.IP = handleLLDPIPField(cdpData, cdpDataIndex + 2, 4);
+        info.IP[1] = handleManagementSubtype(cdpData, cdpDataIndex , lldpFieldLength);
         break;
 
       //  MAC/PHY Configuration
@@ -121,7 +121,7 @@ PINFO lldp_packet_handler( byte cdpData[],uint16_t plen) {
         //Port VLAN ID
         if (eightOtwo == 0) {
           //  Serial.println(lldp_print_mac(cdpData, cdpDataIndex +4 , lldpFieldLength-4));
-          info.VLAN = lldp_handleCdpNumField(cdpData, cdpDataIndex + 4 , lldpFieldLength - 4);
+          info.VLAN[1] = lldp_handleCdpNumField(cdpData, cdpDataIndex + 4 , lldpFieldLength - 4);
         }
 
         eightOtwo++;
@@ -170,7 +170,7 @@ void handlelldpCapabilities( const byte a[], unsigned int offset, unsigned int l
   for (unsigned int i = offset; i < ( offset + lengtha ); ++i , ++j) {
     temp  =  temp + lldp_print_binary(a[i], 8)  ;
   }
-  info.Cap =  (LldpCapabilities(temp));
+  info.Cap[1] =  (LldpCapabilities(temp));
 }
 
 String lldp_print_binary(int v, int num_places)
@@ -264,8 +264,6 @@ String lldp_handleCdpNumField( const byte a[], unsigned int offset, unsigned int
 String handleportsubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int lldpFieldLength) {
   lldpFieldLength = lldpFieldLength - 1;
   unsigned int charTemp = cdpData[cdpDataIndex];
-  Serial.println("Port Sub type:" );
-  Serial.print(charTemp);
   cdpDataIndex++;
 
   /*
@@ -312,6 +310,38 @@ String handleportsubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int
     case 0x0007:
       //ASCII ??
       return handlelldpAsciiField( cdpData, cdpDataIndex , lldpFieldLength);
+      break;
+  }
+  return " ";
+}
+
+
+String handleManagementSubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int lldpFieldLength) {
+  unsigned int SubtypeLength = cdpData[cdpDataIndex] - 1;
+  cdpDataIndex++;
+  unsigned int charTemp = cdpData[cdpDataIndex ];
+  cdpDataIndex++;
+  /*
+     https://github.com/boundary/wireshark/blob/master/epan/dissectors/packet-lldp.c
+        Subtype 1 = IPv4
+        Subtype 2 = IPv6
+        Subtype [Other] = MAC
+  */
+  switch (charTemp) {
+
+    case 0x0001:
+      //IPv4
+      return handleLLDPIPField(cdpData, cdpDataIndex, SubtypeLength);
+      break;
+
+    case 0x0002:
+      //IPv6
+      //return handleLLDPIPv6Field(cdpData, cdpDataIndex, SubtypeLength);
+      break;
+
+    default:
+      //MAC
+      return lldp_print_mac(cdpData, cdpDataIndex, SubtypeLength);
       break;
   }
   return " ";

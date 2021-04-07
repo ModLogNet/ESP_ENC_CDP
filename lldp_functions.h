@@ -16,4 +16,5 @@ bool lldp_byte_array_contains(const byte a[], unsigned int offset, const byte b[
 String lldp_handleCdpNumField( const byte a[], unsigned int offset, unsigned int length);
 
 String handleportsubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int lldpFieldLength);
+String handleManagementSubtype(byte cdpData[], unsigned int cdpDataIndex, unsigned int lldpFieldLength);
 #endif

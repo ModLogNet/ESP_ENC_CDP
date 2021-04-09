@@ -64,7 +64,7 @@ void DHCPOption(uint8_t option, const byte* data, uint8_t len) {
       IPv4("DHCP", data, len);
       break;
 
-    case 53: 
+    case 53:
       //skip DHCP_Text("DHCP Msg Type ", data, len);
       break;
 
@@ -136,27 +136,35 @@ void DHCP_Text(String optlabel, const byte* data, uint8_t len) {
 }
 
 void DHCP_Search(String optlabel, const byte* data, uint8_t len) {
-  byte i;
-  char temp [len + 1] ;
+  //byte i;
+  char temp [len ] ;
   int a = 0;
+  int b = 0;
   String temp1;
-  for ( i = 0; i < ( len ); ++i , ++a) {
-    switch (data[i]) {
-      case 3:
-        temp[a] = '.';
-        break;
-        
-      case 0:
-        temp[a] = '2C';
-        break;
-        
-      default: {
-          temp[a] = data[i];
-        }
+
+  unsigned int DataIndex = 0;
+  while (DataIndex < len ) {
+    unsigned int Searchlen = data[DataIndex];
+    Serial.println(Searchlen);
+    if (Searchlen == 0) {
+      temp1 += "\n";
+      DataIndex++;
+    }
+    else {
+      DataIndex++;
+      for (int  i = 0; i < Searchlen; ++i , ++a) {
+        Serial.println(DataIndex);
+        temp[a] = data[i + DataIndex ];
+      }
+      temp[Searchlen] = '\0';
+      temp1 += temp;
+      if ((DataIndex + Searchlen) != len && data[DataIndex + Searchlen]!=0) {
+        temp1 += ".";
+      }
+      DataIndex += Searchlen;
+      a = 0;
     }
   }
-  temp[len]='\0';
-  temp1  = temp;
   Serial.println(optlabel + ":" + temp1);
   DHCP_info[OptionCount].Option[0] = optlabel;
   DHCP_info[OptionCount].Option[1] = temp1;
@@ -165,6 +173,7 @@ void DHCP_Search(String optlabel, const byte* data, uint8_t len) {
 void DHCP_Time(String optlabel, const byte * data, uint8_t len) {
   unsigned long num = 0;
   int temp1;
+
   for (unsigned int i = 0; i < len; ++i) {
     num <<= 8;
     num += data[i];

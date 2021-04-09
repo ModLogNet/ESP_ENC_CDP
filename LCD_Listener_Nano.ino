@@ -364,7 +364,7 @@ void button_init()
 
     btn2.setPressedHandler([](Button2 & b) {
         btnCick = false;
-        Serial.println("btn press wifi scan");
+        Serial.println("btn press: Refresh DHCP");
         DHCP();
     });
 }

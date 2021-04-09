@@ -85,9 +85,9 @@ PINFO cdp_packet_handler( byte cdpData[],  size_t plen) {
   //Serial.println(cdpDataIndex);
 
 
-  uint16_t startcdp = millis();
+ 
   bool StopCDP = false;
-  while (cdpDataIndex < plen && uint16_t(millis()) - startcdp < 5000 && StopCDP == false) {
+  while (cdpDataIndex < plen) {
     unsigned int cdpFieldType = (cdpData[cdpDataIndex] << 8) | cdpData[cdpDataIndex + 1];
     cdpDataIndex += 2;
     unsigned int cdpFieldLength = (cdpData[cdpDataIndex] << 8) | cdpData[cdpDataIndex + 1];
@@ -106,7 +106,7 @@ PINFO cdp_packet_handler( byte cdpData[],  size_t plen) {
 
         cdpinfo.IP[1] = handleCdpAddresses(cdpData, cdpDataIndex, cdpFieldLength );
         if (cdpinfo.IP[1] == "CORRUPT_IP") {
-          StopCDP = true;
+         
         }
         break;
 
@@ -154,10 +154,8 @@ PINFO cdp_packet_handler( byte cdpData[],  size_t plen) {
         handleCdpVoiceVLAN(cdpData, cdpDataIndex + 2, cdpFieldLength - 2);
         break;
     }
-
     cdpDataIndex += cdpFieldLength;
   }
-
   return cdpinfo;
 }
 

@@ -10,6 +10,10 @@
 #include "DHCPOptions.h"
 #include "Button2.h"
 
+#include "esp_system.h"
+#include "esp_adc_cal.h"
+#include "driver/adc.h"
+
 /////////////SCREEN////////////
 #include <TFT_eSPI.h>
 #include <SPI.h>
@@ -38,7 +42,7 @@ String Protocal;
 bool LogicLink = false;
 bool justbooted = true;
 #define Serialout
-int BatLvl = 0;
+float BatLvl = 0;
 
 DHCP_DATA DHCP_info[255];
 
@@ -62,6 +66,9 @@ HardwareSerial MySerial(2);
 #include "soc/rtc_wdt.h"
 #include "esp_int_wdt.h"
 #include "esp_task_wdt.h"
+
+unsigned long interval = 1000;
+unsigned long previousMillis = 0;
 
 void coreTask( void * pvParameters ) {
   rtc_wdt_protect_off();
@@ -96,6 +103,9 @@ void coreTask( void * pvParameters ) {
 
 void setup()
 {
+  esp_adc_cal_characteristics_t adc_chars;
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC_ATTEN_DB_2_5, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  pinMode(14, OUTPUT);
 
   bluetooth_stat = xQueueCreate( queueSize, sizeof( int ) );
 
@@ -105,7 +115,7 @@ void setup()
   tft.setTextColor(TFT_WHITE);
   tft.setCursor(0, 22, 1);
 
- button_init();
+  button_init();
 
   if (bluetooth_stat == NULL) {
     Serial.println("Error creating the queue");
@@ -148,14 +158,17 @@ void setup()
 
 void loop()
 {
-  showVoltage();
-  LinkStatus();
+  unsigned long currentMillis = millis();
+  if ((unsigned long)(currentMillis - previousMillis) >= interval) {
+    showVoltage();
+    LinkStatus();
+    previousMillis = millis();
+  }
+  if (btnCick) {
+    showVoltage();
+  }
+  button_loop();
 
-   if (btnCick) {
-        showVoltage();
-    }
-    button_loop();
-    
   int BT_STAT = 0;
   //Serial.print(BT_STAT);
 
@@ -238,30 +251,34 @@ void showVoltage()
 {
   int vref = 1100;
 
-  int batteryLevel = map(analogRead(34), 0.0f, 4095.0f, 0, 100);
-  if (BatLvl != batteryLevel) {
-    BatLvl = batteryLevel;
+  digitalWrite(14, HIGH);
+  delay(1);
+  float measurement = (float) analogRead(34);
+
+
+
+  if (BatLvl != measurement) {
+    BatLvl = measurement;
     tft.pushImage(tft_width - 33, 2, 32, 18, image_data_bat1);
     tft.setTextColor(TFT_BLACK);
 
-    uint16_t v = analogRead(ADC_PIN);
-    float battery_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
+    float battery_voltage = (measurement / 4095.0) * 7.26;
+    digitalWrite(14, LOW);
+    Serial.println("USB Voltage:" + String(battery_voltage));
 
-    int batteryLevel = map(battery_voltage, 0.0f, 4.0f, 0, 100);
-    // int batteryLevel = map(analogRead(34), 0.0f, 4095.0f, 0, 100);
-    if (battery_voltage > 4.5) {
-      tft.drawString("---", tft_width - 28, 7);
+
+    if (battery_voltage > 4.2) {
+      tft.pushImage(tft_width - 33, 2, 32, 18, image_Charge);
+      tft.setTextColor(TFT_RED);
+     // tft.drawString(String(int((battery_voltage - 3.2) * (100 - 0) / (4.0 - 3.2) + 0)), tft_width - 28, 7);
     }
     else {
-      tft.drawString(String(battery_voltage), tft_width - 28, 7);
+
+      tft.drawString(String(int((battery_voltage - 3.2) * (100 - 0) / (4.1 - 3.2) + 0)), tft_width - 28, 7);
+      //tft.drawString(String(battery_voltage), tft_width - 28, 7);
+
+
     }
-
-
-    // tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
-    // tft.setCursor(0, 22, 1);
-    // tft.setTextColor(TFT_WHITE);
-    // tft.println("Voltage :" + String(battery_voltage) + "V");
-
   }
 }
 
@@ -276,14 +293,11 @@ void LinkStatus()
       tft.setTextColor(TFT_BLACK);
       tft.pushImage(tft_width - 50, 0, 16, 21, image_up);
       DHCP();
-
     }
     if (LinkStat == false ) {
-
       tft.setTextColor(TFT_BLACK);
       tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
       tft.pushImage(tft_width - 50, 0, 16, 21, image_down);
-
     }
   }
 }
@@ -338,45 +352,44 @@ void DHCP() {
 
 void button_init()
 {
-    btn1.setLongClickHandler([](Button2 & b) {
-        btnCick = false;
-        int r = digitalRead(TFT_BL);
-        tft.fillScreen(TFT_BLACK);
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.setTextDatum(MC_DATUM);
-        tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
-        espDelay(6000);
-        digitalWrite(TFT_BL, !r);
+  btn1.setLongClickHandler([](Button2 & b) {
+    btnCick = false;
+    int r = digitalRead(TFT_BL);
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
+    espDelay(6000);
+    digitalWrite(TFT_BL, !r);
 
-        tft.writecommand(TFT_DISPOFF);
-        tft.writecommand(TFT_SLPIN);
-        //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-        // esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
-        delay(200);
-        esp_deep_sleep_start();
-    });
-    btn1.setPressedHandler([](Button2 & b) {
-        Serial.println("Detect Voltage..");
-        btnCick = true;
-    });
+    tft.writecommand(TFT_DISPOFF);
+    tft.writecommand(TFT_SLPIN);
+    //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
+    delay(200);
+    esp_deep_sleep_start();
+  });
+  btn1.setPressedHandler([](Button2 & b) {
+    //Serial.println("Detect Voltage..");
+    btnCick = true;
+  });
 
-    btn2.setPressedHandler([](Button2 & b) {
-        btnCick = false;
-        Serial.println("btn press: Refresh DHCP");
-        DHCP();
-    });
+  btn2.setPressedHandler([](Button2 & b) {
+    btnCick = false;
+    // Serial.println("btn press: Refresh DHCP");
+    DHCP();
+  });
 }
 
 void button_loop()
 {
-    btn1.loop();
-    btn2.loop();
+  btn1.loop();
+  btn2.loop();
 }
 void espDelay(int ms)
 {
-    esp_sleep_enable_timer_wakeup(ms * 1000);
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-    esp_light_sleep_start();
+  esp_sleep_enable_timer_wakeup(ms * 1000);
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  esp_light_sleep_start();
 }

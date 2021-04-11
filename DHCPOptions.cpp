@@ -84,8 +84,16 @@ void DHCPOption(uint8_t option, const byte* data, uint8_t len) {
       DHCP_Text("PXE FILE", data, len);
       break;
 
+    case 77:
+      // Skip option
+      break;
+
     case 119:
       DHCP_Search("SEARCH DOMAIN", data, len);
+      break;
+
+    case 255:
+      // Skip option
       break;
 
     default: {
@@ -136,7 +144,6 @@ void DHCP_Text(String optlabel, const byte* data, uint8_t len) {
 }
 
 void DHCP_Search(String optlabel, const byte* data, uint8_t len) {
-  //byte i;
   char temp [len ] ;
   int a = 0;
   int b = 0;
@@ -145,7 +152,6 @@ void DHCP_Search(String optlabel, const byte* data, uint8_t len) {
   unsigned int DataIndex = 0;
   while (DataIndex < len ) {
     unsigned int Searchlen = data[DataIndex];
-    Serial.println(Searchlen);
     if (Searchlen == 0) {
       temp1 += "\n";
       DataIndex++;
@@ -153,12 +159,11 @@ void DHCP_Search(String optlabel, const byte* data, uint8_t len) {
     else {
       DataIndex++;
       for (int  i = 0; i < Searchlen; ++i , ++a) {
-        Serial.println(DataIndex);
         temp[a] = data[i + DataIndex ];
       }
       temp[Searchlen] = '\0';
       temp1 += temp;
-      if ((DataIndex + Searchlen) != len && data[DataIndex + Searchlen]!=0) {
+      if ((DataIndex + Searchlen) != len && data[DataIndex + Searchlen] != 0) {
         temp1 += ".";
       }
       DataIndex += Searchlen;
@@ -173,7 +178,6 @@ void DHCP_Search(String optlabel, const byte* data, uint8_t len) {
 void DHCP_Time(String optlabel, const byte * data, uint8_t len) {
   unsigned long num = 0;
   int temp1;
-
   for (unsigned int i = 0; i < len; ++i) {
     num <<= 8;
     num += data[i];

@@ -33,7 +33,9 @@ Button2 btn2(BUTTON_2);
 int btnCick = false;
 
 DHCP_DATA DHCP_Info[256];
-int OptionCount = 0;
+int DisplayedScreen = 0;
+PINFO LastCapturedPacket;
+int OptionCount=0;
 
 byte mymac[] = {  0xCA, 0xFE, 0xC0, 0xFF, 0xEE, 0x00};
 byte Ethernet::buffer[1500];
@@ -60,8 +62,6 @@ QueueHandle_t bluetooth_stat;
 static int taskCore = 0;
 BluetoothSerial SerialBT;
 HardwareSerial MySerial(2);
-
-
 
 #include "soc/rtc_wdt.h"
 #include "esp_int_wdt.h"
@@ -106,7 +106,8 @@ void setup()
   esp_adc_cal_characteristics_t adc_chars;
   esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC_ATTEN_DB_2_5, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
   pinMode(14, OUTPUT);
-
+  pinMode(12, OUTPUT);
+  digitalWrite(12, HIGH);
   bluetooth_stat = xQueueCreate( queueSize, sizeof( int ) );
 
   tft.init();
@@ -153,7 +154,7 @@ void setup()
   tft.setSwapBytes(true);
   title();
 
-  // pinMode(33, INPUT);
+
 }
 
 void loop()
@@ -202,11 +203,13 @@ void loop()
 }
 
 void displayinfo(PINFO Screens) {
+  DisplayedScreen = 2;
+  LastCapturedPacket = Screens;
   tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
   tft.setCursor(0, 22, 1);
   tft.setTextColor(TFT_WHITE);
 
-  drawtext(Screens.Proto);
+  // drawtext(Screens.Proto);
   drawtext(Screens.ProtoVer);
   drawtext(Screens.Name);
   drawtext(Screens.ChassisID);
@@ -222,6 +225,12 @@ void displayinfo(PINFO Screens) {
   drawtext(Screens.Dup);
   drawtext(Screens.VTP);
   drawtext(Screens.TTL);
+
+  tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
+  tft.setTextColor( TFT_BLACK);
+  tft.setCursor(5, tft_height - 9, 1);
+  drawtext(Screens.Proto);
+
 }
 
 void drawtext(String value[2]) {
@@ -270,12 +279,24 @@ void showVoltage()
     if (battery_voltage > 4.2) {
       tft.pushImage(tft_width - 33, 2, 32, 18, image_Charge);
       tft.setTextColor(TFT_RED);
-     // tft.drawString(String(int((battery_voltage - 3.2) * (100 - 0) / (4.0 - 3.2) + 0)), tft_width - 28, 7);
+      // tft.drawString(String(int((battery_voltage - 3.2) * (100 - 0) / (4.0 - 3.2) + 0)), tft_width - 28, 7);
     }
     else {
 
-      tft.drawString(String(int((battery_voltage - 3.2) * (100 - 0) / (4.1 - 3.2) + 0)), tft_width - 28, 7);
+      float percent = (battery_voltage - 3.2) * (100 - 0) / (4.1 - 3.2) + 0;
       //tft.drawString(String(battery_voltage), tft_width - 28, 7);
+      int per = 26 * percent / 100;
+      int colbat;
+      if (percent > 70) {
+        colbat = TFT_BLUE;
+      }
+      if (percent < 70 && percent > 30) {
+        colbat = TFT_YELLOW;
+      }
+      if (percent < 30) {
+        colbat = TFT_RED;
+      }
+      tft.fillRect(tft_width - 31, 2 + 2,  per, 2 + 11, colbat );
 
 
     }
@@ -305,7 +326,7 @@ void LinkStatus()
 void DHCP() {
 
   // Reset Array to defaults.
-  OptionCount = 0;
+
   for ( int j = 0; j < 255; ++j) {
     DHCP_info[j].Option[0] = "EMPTY";
     DHCP_info[j].Option[1] = "EMPTY";
@@ -315,7 +336,7 @@ void DHCP() {
   tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
   tft.setTextColor( TFT_BLACK);
   tft.setCursor(5, tft_height - 9, 1);
-  tft.println("Getting DHCP...");
+  tft.println("Proto: DHCP");
 
   if (!ether.dhcpSetup())
   {
@@ -326,6 +347,7 @@ void DHCP() {
   }
   else
   {
+    DisplayedScreen = 1;
     String ipaddy;
     for (unsigned int j = 0; j < 4; ++j) {
       ipaddy  += String(ether.myip[j]);
@@ -333,21 +355,27 @@ void DHCP() {
         ipaddy += ".";
       }
     }
-    tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
-    tft.setTextColor( TFT_BLACK);
-    tft.setCursor(5, tft_height - 9, 1);
-    tft.println("IP:" + ipaddy);
+    displayDHCP();
 
-    tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
-    tft.setCursor(0, 22, 1);
-    tft.setTextColor(TFT_WHITE);
-
-    for (unsigned int j = 0; j < 254; ++j) {
-      drawtext(DHCP_info[j].Option);
-    }
   }
 }
 
+void displayDHCP() {
+  tft.fillRect(0, tft_height - 10, tft_width, 10, TFT_WHITE );
+  tft.setTextColor( TFT_BLACK);
+  tft.setCursor(5, tft_height - 9, 1);
+  tft.println("Proto: DHCP");
+
+  //tft.println("IP:" + ipaddy);
+
+  tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
+  tft.setCursor(0, 22, 1);
+  tft.setTextColor(TFT_WHITE);
+
+  for (unsigned int j = 0; j < 254; ++j) {
+    drawtext(DHCP_info[j].Option);
+  }
+}
 
 
 void button_init()
@@ -371,14 +399,29 @@ void button_init()
     esp_deep_sleep_start();
   });
   btn1.setPressedHandler([](Button2 & b) {
-    //Serial.println("Detect Voltage..");
-    btnCick = true;
+    btnCick = false;
+    //loop(); //do nothing
   });
-
+  btn2.setLongClickHandler([](Button2 & b) {
+    btnCick = false;
+    DHCP();
+  });
   btn2.setPressedHandler([](Button2 & b) {
     btnCick = false;
-    // Serial.println("btn press: Refresh DHCP");
-    DHCP();
+    switch (DisplayedScreen) {
+      case 0:
+        break;
+
+      case 1:
+        DisplayedScreen = 2;
+        displayinfo(LastCapturedPacket);
+        break;
+
+      case 2:
+        DisplayedScreen = 1;
+        displayDHCP();
+        break;
+    }
   });
 }
 

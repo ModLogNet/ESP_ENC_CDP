@@ -236,8 +236,6 @@ void showVoltage()
   delay(1);
   float measurement = (float) analogRead(34);
 
-
-
   if (BatLvl != measurement) {
     BatLvl = measurement;
     tft.pushImage(tft_width - 33, 2, 32, 18, image_data_bat1);
@@ -302,7 +300,7 @@ void DHCP() {
     DHCP_info[j].Option[1] = "EMPTY";
   }
 
-  
+
   displayLowerBar ("DHCP...");
 
   //Check for DHCP
@@ -343,8 +341,10 @@ void displayDHCP() {
 
   tft.fillRect(0, 21, tft_width, tft_height - 31, TFT_BLACK );
   tft.setCursor(0, 22, 1);
+  tft.setTextColor(TFT_GREEN);
+  tft.print("DHCP IP: ");
   tft.setTextColor(TFT_WHITE);
-  tft.println("DHCP IP: " + ipaddy);
+  tft.print(ipaddy);
   for (unsigned int j = 0; j < 254; ++j) {
     drawtext(DHCP_info[j].Option);
 
@@ -435,10 +435,10 @@ void bt_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
 void introScreen() {
   int leftmargin = 2;
   int iconspacing = 22;
-  
+
   int leftTextMargin = 37;
   int textSpacing = 23;
-  
+
   tft.setSwapBytes(true);
   tft.fillScreen(TFT_WHITE);
   tft.setTextColor(TFT_BLACK);
@@ -478,10 +478,10 @@ void introScreen() {
   tft.setCursor(leftTextMargin, textSpacing * 8, 1);
   tft.println("Batt Charging");
 
-  tft.setCursor(0, textSpacing * 8+10, 1);
- /* tft.println("DHCP/LLDP/CDP   LCD to BT");
-  tft.println("Check DHCP         Sleep");
-  tft.println("Right:");
-  tft.println("      ");
+  tft.setCursor(0, textSpacing * 8 + 10, 1);
+  /* tft.println("DHCP/LLDP/CDP   LCD to BT");
+    tft.println("Check DHCP         Sleep");
+    tft.println("Right:");
+    tft.println("      ");
   */
 }

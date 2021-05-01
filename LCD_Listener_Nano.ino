@@ -55,18 +55,24 @@ DHCP_DATA DHCP_info[255];
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
 #endif
 
-int queueSize = 1;
-int queue_delay = 2;
-QueueHandle_t bluetooth_stat;
+//int queueSize = 1;
+//int queue_delay = 2;
+//QueueHandle_t bluetooth_stat;
 
 static int taskCore = 0;
+int BT_STAT = 0;
 BluetoothSerial SerialBT;
 HardwareSerial MySerial(2);
 String BluetoothName = "CDP4ME";
 int BluetoothSerialSpeed = 9600;
 char *Bluetoothpin = "1234";
 int RS323Speed = 9600;
-int BT_STAT = 0;
+int RXpin = 32;
+int TXpin = 13;
+
+#define SERIAL_BUFF  1278
+
+
 int ENCToBluetooth = 0;
 #include "soc/rtc_wdt.h"
 #include "esp_int_wdt.h"
@@ -80,17 +86,14 @@ void coreTask( void * pvParameters ) {
   rtc_wdt_disable();
   disableCore0WDT();
   disableLoopWDT();
-  esp_task_wdt_delete(NULL);
-  //Bluetooth COMs are running on core 1
-  int BT = 0;
 
-  MySerial.begin(RS323Speed, SERIAL_8N1, 32, 39); //RX, TX
+  MySerial.begin(RS323Speed, SERIAL_8N1, RXpin, TXpin); //RX, TX
+  MySerial.setRxBufferSize(SERIAL_BUFF);
+
   SerialBT.begin(BluetoothName);
-
   SerialBT.register_callback(bt_callback);
   SerialBT.setPin(Bluetoothpin);
 
-  xQueueSend(bluetooth_stat, &BT, queue_delay);
   while (true) {
     if (MySerial.available()) {
       SerialBT.write(MySerial.read());
@@ -108,7 +111,6 @@ void setup()
   pinMode(14, OUTPUT);
   pinMode(12, OUTPUT);
   digitalWrite(12, HIGH);
-  bluetooth_stat = xQueueCreate( queueSize, sizeof( int ) );
 
   tft.init();
   tft.setRotation(0);
@@ -117,12 +119,6 @@ void setup()
   tft.setCursor(0, 22, 1);
 
   button_init();
-
-  if (bluetooth_stat == NULL) {
-    Serial.println("Error creating the queue");
-  }
-  int BT = 0;
-  xQueueSend(bluetooth_stat, &BT, 2);
 
   tft.println("Serial 9600");
 
@@ -153,7 +149,7 @@ void setup()
   tft.println("Ethernet Promiscuous");
   tft.setSwapBytes(true);
   title();
-  
+
 
 }
 
@@ -235,7 +231,7 @@ void drawtext(String value[2]) {
 }
 
 void title() {
- 
+
   if (tft_width >= 240) {
     tft.fillRect(0, 0, tft_width, 21, TFT_WHITE );
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
@@ -247,7 +243,7 @@ void title() {
     tft.drawString(String(" MODLOG"), 2, 1, 1);
     tft.drawString(String("CDP/LLDP"), 2, 9, 1);
   }
- tft.pushImage(tft_width - 84, 2, 18, 18, no_mag_glass);
+  tft.pushImage(tft_width - 84, 2, 18, 18, no_mag_glass);
 }
 
 void showVoltage()
@@ -274,9 +270,10 @@ void showVoltage()
     }
     else {
 
-      float percent = (battery_voltage - 3.2) * (100 - 0) / (4.1 - 3.2) + 0;
+      float percent = (battery_voltage - 3.1) * (100 - 0) / (4.0 - 3.1) + 0;
       //tft.drawString(String(battery_voltage), tft_width - 28, 7);
       int per = 26 * percent / 100;
+      if (per >100){per=100;}
       int colbat;
       if (percent > 70) {
         colbat = TFT_BLUE;
@@ -297,7 +294,6 @@ void showVoltage()
 void LinkStatus()
 {
   bool LinkStat = ENC28J60::isLinkUp();
-  //Serial.print(String(LinkStat));
   if (ENCLink != LinkStat || justbooted == true) {
     justbooted = false;
     ENCLink = LinkStat;
@@ -393,6 +389,7 @@ void button_init()
   });
   btn1.setPressedHandler([](Button2 & b) {
     btnCick = false;
+
     // Enable routing screen info to Bluetooth serial. 1=enable 0=disable.
     switch (ENCToBluetooth) {
       case 0:
@@ -446,7 +443,7 @@ void bt_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
   if (event == ESP_SPP_SRV_OPEN_EVT) {
     BT_STAT = 1;
   }
-  else {
+  if (event == ESP_SPP_SRV_STOP_EVT) {
     BT_STAT = 0;
   }
 }

@@ -69,11 +69,9 @@ char *Bluetoothpin = "1234";
 int RS323Speed = 9600;
 int RXpin = 32;
 int TXpin = 13;
-
 #define SERIAL_BUFF  1278
-
-
 int ENCToBluetooth = 0;
+
 #include "soc/rtc_wdt.h"
 #include "esp_int_wdt.h"
 #include "esp_task_wdt.h"
@@ -82,6 +80,8 @@ unsigned long interval = 1000;
 unsigned long previousMillis = 0;
 
 void coreTask( void * pvParameters ) {
+
+  //The following code removes background checks not needed
   rtc_wdt_protect_off();
   rtc_wdt_disable();
   disableCore0WDT();
@@ -114,40 +114,22 @@ void setup()
 
   tft.init();
   tft.setRotation(0);
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE);
-  tft.setCursor(0, 22, 1);
-
+  introScreen();
   button_init();
-
-  tft.println("Serial 9600");
 
   Serial.begin(9600);
 
-  delay(1000);
-
-  tft.print("Starting to create task on core ");
-  tft.println(taskCore);
-  tft.print("Current Core:");
-  tft.println(xPortGetCoreID());
-
   xTaskCreatePinnedToCore(  coreTask, "coreTask",     10000, NULL, 1 , NULL,  0);
 
-  tft.println("Initializing Ethernet.");
   if (ether.begin(sizeof (Ethernet::buffer), mymac, 5) == 0) {
-    tft.print("Failed to access Ethernet controller");
   }
   else {
-    tft.println("Ethernet Done");
-
     ether.dhcpAddOptionCallback( 15, DHCPOption);
-
   }
 
   ENC28J60::enablePromiscuous();
 
-  tft.println("Ethernet Promiscuous");
-  tft.setSwapBytes(true);
+
   title();
 
 
@@ -273,7 +255,9 @@ void showVoltage()
       float percent = (battery_voltage - 3.1) * (100 - 0) / (4.0 - 3.1) + 0;
       //tft.drawString(String(battery_voltage), tft_width - 28, 7);
       int per = 26 * percent / 100;
-      if (per >100){per=100;}
+      if (per > 100) {
+        per = 100;
+      }
       int colbat;
       if (percent > 70) {
         colbat = TFT_BLUE;
@@ -318,7 +302,7 @@ void DHCP() {
     DHCP_info[j].Option[1] = "EMPTY";
   }
 
-  tft.fillRect(0, 21, tft_width, tft_height, TFT_BLACK );
+  
   displayLowerBar ("DHCP...");
 
   //Check for DHCP
@@ -346,6 +330,7 @@ void displayLowerBar (String text) {
   }
 }
 void displayDHCP() {
+  tft.fillRect(0, 21, tft_width, tft_height, TFT_BLACK );
   displayLowerBar("DHCP");
 
   String ipaddy;
@@ -446,4 +431,57 @@ void bt_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
   if (event == ESP_SPP_CLOSE_EVT) {
     BT_STAT = 0;
   }
+}
+void introScreen() {
+  int leftmargin = 2;
+  int iconspacing = 22;
+  
+  int leftTextMargin = 37;
+  int textSpacing = 23;
+  
+  tft.setSwapBytes(true);
+  tft.fillScreen(TFT_WHITE);
+  tft.setTextColor(TFT_BLACK);
+  tft.setCursor(leftTextMargin, 22, 1);
+
+
+  tft.pushImage(leftmargin, iconspacing, 18, 18, mag_glass); //pipe bluetooth
+  tft.setCursor(leftTextMargin, textSpacing, 1);
+  tft.println("LCD to BT.");
+
+  tft.pushImage(leftmargin, iconspacing * 2, 18, 18, no_mag_glass); //don't pipe bluetooth
+  tft.setCursor(leftTextMargin, textSpacing * 2, 1);
+  tft.println("LCD to BT Off.");
+
+
+  tft.pushImage(leftmargin, iconspacing * 3, 12, 21, image_BT_OFF);
+  tft.setCursor(leftTextMargin, textSpacing * 3, 1);
+  tft.println("BT Idle");
+
+  tft.pushImage(leftmargin, iconspacing * 4, 12, 21, image_BT);
+  tft.setCursor(leftTextMargin, textSpacing * 4, 1);
+  tft.println("BT Connected");
+
+  tft.pushImage(leftmargin, iconspacing * 5, 16, 21, image_up);
+  tft.setCursor(leftTextMargin, textSpacing * 5, 1);
+  tft.println("Link UP");
+
+  tft.pushImage(leftmargin, iconspacing * 6, 16, 21, image_down);
+  tft.setCursor(leftTextMargin, textSpacing * 6, 1);
+  tft.println("Link DOWN");
+
+  tft.pushImage(leftmargin, iconspacing * 7, 32, 18, image_data_bat1);
+  tft.setCursor(leftTextMargin, textSpacing * 7, 1);
+  tft.println("Batt level");
+
+  tft.pushImage(leftmargin, iconspacing * 8, 32, 18, image_Charge);
+  tft.setCursor(leftTextMargin, textSpacing * 8, 1);
+  tft.println("Batt Charging");
+
+  tft.setCursor(0, textSpacing * 8+10, 1);
+ /* tft.println("DHCP/LLDP/CDP   LCD to BT");
+  tft.println("Check DHCP         Sleep");
+  tft.println("Right:");
+  tft.println("      ");
+  */
 }

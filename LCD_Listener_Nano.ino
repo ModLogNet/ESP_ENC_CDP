@@ -443,7 +443,7 @@ void bt_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
   if (event == ESP_SPP_SRV_OPEN_EVT) {
     BT_STAT = 1;
   }
-  if (event == ESP_SPP_SRV_STOP_EVT) {
+  if (event == ESP_SPP_CLOSE_EVT) {
     BT_STAT = 0;
   }
 }

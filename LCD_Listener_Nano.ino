@@ -13,6 +13,8 @@
 #include "esp_system.h"
 #include "esp_adc_cal.h"
 #include "driver/adc.h"
+#include <esp_wifi.h>
+#include <esp_bt.h>
 
 /////////////SCREEN////////////
 #include <TFT_eSPI.h>
@@ -24,7 +26,12 @@ int tft_width = 135;
 int tft_height = 240;
 TFT_eSPI tft = TFT_eSPI(tft_width, tft_height); // Invoke custom library
 
-#define ADC_PIN             34
+
+
+#define ADC_EN              14  //ADC_EN is the ADC detection enable port
+#define ADC_PIN 34
+int vref = 1100;
+
 #define BUTTON_1            35
 #define BUTTON_2            0
 
@@ -44,7 +51,7 @@ String Protocal;
 bool LogicLink = false;
 bool justbooted = true;
 #define Serialout
-float BatLvl = 0;
+String BatLvl[2];
 
 DHCP_DATA DHCP_info[255];
 
@@ -76,30 +83,44 @@ int ENCToBluetooth = 0;
 #include "esp_int_wdt.h"
 #include "esp_task_wdt.h"
 
-unsigned long interval = 1000;
-unsigned long previousMillis = 0;
+unsigned long Interval = 1000;
+unsigned long PreviousMillis = 0;
+
 
 void coreTask( void * pvParameters ) {
 
-  //The following code removes background checks not needed
+  //The following code removes background checks not needed.
   rtc_wdt_protect_off();
   rtc_wdt_disable();
   disableCore0WDT();
   disableLoopWDT();
 
+  //Setup custom serial port for TTL.
   MySerial.begin(RS323Speed, SERIAL_8N1, RXpin, TXpin); //RX, TX
   MySerial.setRxBufferSize(SERIAL_BUFF);
 
+  //Setup Bluetooth options.
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_P9);
   SerialBT.begin(BluetoothName);
   SerialBT.register_callback(bt_callback);
   SerialBT.setPin(Bluetoothpin);
 
+  //Main loop for Bluetooth serial.
   while (true) {
     if (MySerial.available()) {
       SerialBT.write(MySerial.read());
     }
     if (SerialBT.available()) {
-      MySerial.write(SerialBT.read());
+      if (ENCToBluetooth == 1) {
+        char ch = SerialBT.read();
+        if (ch == '\r') {
+          SerialBT.println(onscreenInfo());
+          delay(20);
+        }
+      }
+      else {
+        MySerial.write(SerialBT.read());
+      }
     }
   }
 }
@@ -108,42 +129,55 @@ void setup()
 {
   esp_adc_cal_characteristics_t adc_chars;
   esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC_ATTEN_DB_2_5, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
-  pinMode(14, OUTPUT);
+
+  pinMode(ADC_EN, OUTPUT);
+  digitalWrite(ADC_EN, HIGH);
+
+  //Pin12 is used turn on the mosfet and power the ENC and TTL convertor.
   pinMode(12, OUTPUT);
   digitalWrite(12, HIGH);
 
+  //Disable WIFI Options to save power
+  WiFi.mode(WIFI_OFF);
+  esp_wifi_stop();
+
+  //Initialize the screen
   tft.init();
   tft.setRotation(0);
+
+  //Display intro screen explaining icon meanings
   introScreen();
+
+  //Specify button options
   button_init();
 
+  //This serial is used for debug purposes only.
   Serial.begin(9600);
 
+  //Setup on task on other core.
   xTaskCreatePinnedToCore(  coreTask, "coreTask",     10000, NULL, 1 , NULL,  0);
 
+  //Initialize ENC.
   if (ether.begin(sizeof (Ethernet::buffer), mymac, 5) == 0) {
   }
   else {
     ether.dhcpAddOptionCallback( 15, DHCPOption);
   }
 
+  //Set ENC to promiscuous mode
   ENC28J60::enablePromiscuous();
 
-
+  //Display titlebar
   title();
-
-
 }
 
 void loop()
 {
-  unsigned long currentMillis = millis();
-  if ((unsigned long)(currentMillis - previousMillis) >= interval) {
+  if (millis() >= PreviousMillis + Interval) {
+    PreviousMillis += Interval;
     showVoltage();
     LinkStatus();
-    previousMillis = millis();
   }
-
   button_loop();
 
   if (BT_STAT == 0) {
@@ -230,47 +264,58 @@ void title() {
 
 void showVoltage()
 {
-  int vref = 1100;
+  uint16_t v = analogRead(ADC_PIN);
+  float USB_voltage = ((float)v / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
 
-  digitalWrite(14, HIGH);
-  delay(1);
-  float measurement = (float) analogRead(34);
+  BatLvl[0] = USB_voltage;
 
-  if (BatLvl != measurement) {
-    BatLvl = measurement;
-    tft.pushImage(tft_width - 33, 2, 32, 18, image_data_bat1);
-    tft.setTextColor(TFT_BLACK);
+  tft.pushImage(tft_width - 33, 2, 32, 18, image_data_bat1);
+  tft.setTextColor(TFT_BLACK);
 
-    float battery_voltage = (measurement / 4095.0) * 7.26;
-    digitalWrite(14, LOW);
-    if (battery_voltage > 4.2) {
-      tft.pushImage(tft_width - 33, 2, 32, 18, image_Charge);
-      tft.setTextColor(TFT_RED);
-      // tft.drawString(String(int((battery_voltage - 3.2) * (100 - 0) / (4.0 - 3.2) + 0)), tft_width - 28, 7);
-    }
-    else {
-
-      float percent = (battery_voltage - 3.1) * (100 - 0) / (4.0 - 3.1) + 0;
-      //tft.drawString(String(battery_voltage), tft_width - 28, 7);
-      int per = 26 * percent / 100;
-      if (per > 100) {
-        per = 100;
-      }
-      int colbat;
-      if (percent > 70) {
-        colbat = TFT_BLUE;
-      }
-      if (percent < 70 && percent > 30) {
-        colbat = TFT_YELLOW;
-      }
-      if (percent < 30) {
-        colbat = TFT_RED;
-      }
-      tft.fillRect(tft_width - 31, 2 + 2,  per, 2 + 11, colbat );
-
-
-    }
+  if (USB_voltage > 4.5) {
+    tft.pushImage(tft_width - 33, 2, 32, 18, image_Charge);
+    tft.setTextColor(TFT_RED);
+    BatLvl[0] = "Charging";
+    BatLvl[1] = "";
+    //tft.drawString(String(USB_voltage), tft_width - 28, 7);
   }
+  else {
+
+    float percent = (USB_voltage - 3.1) * (100 - 0) / (4.1 - 3.1) + 0;
+
+    if (percent > 100) {
+      percent = 100;
+    }
+    BatLvl[1] = percent;
+    int per = (27 * percent) / 100;
+
+    int colbat;
+    if (percent > 50) {
+      colbat = TFT_BLUE;
+    }
+    if (percent < 50 && percent > 25) {
+      colbat = TFT_YELLOW;
+    }
+    if (percent < 25) {
+      colbat = TFT_RED;
+    }
+    tft.fillRect(tft_width - 31, 4,  per, 13, colbat );
+    //      tft.drawString(String(USB_voltage), tft_width - 28, 7);
+  }
+}
+
+String onscreenInfo() {
+
+  String DeviceInfo;
+  if (ENCLink == true) {
+    DeviceInfo += " [Link UP] ";
+  }
+  else {
+    DeviceInfo += " [Link DOWN] ";
+  }
+  DeviceInfo += " [Voltage:" + String(BatLvl[0]) + "] ";
+  DeviceInfo += " [Percent:" + String(BatLvl[1]) + "] ";
+  return DeviceInfo;
 }
 
 void LinkStatus()
@@ -356,22 +401,9 @@ void button_init()
 {
   btn1.setLongClickHandler([](Button2 & b) {
     btnCick = false;
-    int r = digitalRead(TFT_BL);
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
-    espDelay(6000);
-    digitalWrite(TFT_BL, !r);
-
-    tft.writecommand(TFT_DISPOFF);
-    tft.writecommand(TFT_SLPIN);
-    //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
-    delay(200);
-    esp_deep_sleep_start();
+    goToDeepSleep();
   });
+
   btn1.setPressedHandler([](Button2 & b) {
     btnCick = false;
 
@@ -387,6 +419,7 @@ void button_init()
         break;
     }
   });
+
   btn2.setLongClickHandler([](Button2 & b) {
     btnCick = false;
     DHCP();
@@ -484,4 +517,29 @@ void introScreen() {
     tft.println("Right:");
     tft.println("      ");
   */
+}
+
+void goToDeepSleep()
+{
+  int r = digitalRead(TFT_BL);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(String("Press again to wake up"),  tft.width() / 2, tft.height() / 2);
+  espDelay(600);
+  digitalWrite(TFT_BL, !r);
+
+  tft.writecommand(TFT_DISPOFF);
+  tft.writecommand(TFT_SLPIN);
+
+  btStop();
+  adc_power_off();
+  esp_wifi_stop();
+  esp_bt_controller_disable();
+
+  //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
+  delay(200);
+  esp_deep_sleep_start();
 }

@@ -1,6 +1,6 @@
 #include <EtherCard.h>
 #include <Arduino.h>
-#include "Packet_data.h";
+#include "Packet_Data.h";
 #ifndef LLDP_FUNCTIONS_H
 #define LLDP_FUNCTIONS_H
 

@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "cdp_functions.h";
-#include "Packet_data.h";
+#include "Packet_Data.h";
 byte cdp_mac[] = {0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xcc};
 byte llc_bytes[] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x0c, 0x20, 0x00};
 #define printhex(n) {if((n)<0x10){Serial.print('0');}Serial.print((n),HEX);}

@@ -1,6 +1,6 @@
 #include <EtherCard.h>
 #include <Arduino.h>
-#include "Packet_data.h";
+#include "Packet_Data.h";
 
 #ifndef CDP_FUNCTIONS_H
 #define CDP_FUNCTIONS_H

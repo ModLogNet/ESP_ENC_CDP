@@ -191,7 +191,7 @@ void loop()
   byte buffcheck[1500];
   memcpy( buffcheck, Ethernet::buffer, plen );
 
-  if (plen >= 0) {
+  if (plen > 0) {
     unsigned int cdp_correct = cdp_check_Packet( plen, buffcheck, plen);
     if (cdp_correct > 1) {
       displayinfo(cdp_packet_handler(buffcheck, plen));

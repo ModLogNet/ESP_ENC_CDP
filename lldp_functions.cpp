@@ -14,10 +14,7 @@ unsigned int lldp_check_Packet(int plen, byte lldp_encbuff[], int bufSize ) {
 
 
   if ( plen > 0 ) {
-    if (plen > sizeof(lldp_encbuff)) {
 
-      plen = sizeof(lldp_encbuff);
-    }
     unsigned int cdpDataIndex = 0;
 
     if (lldp_byte_array_contains(lldp_encbuff, cdpDataIndex, lldp_mac, sizeof(lldp_mac))) {
